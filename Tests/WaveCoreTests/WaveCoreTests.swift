@@ -185,7 +185,7 @@ private func gateOpen(hold: Double = 5, at steps: [(active: Bool, now: Double)])
 @Test func optionsRejectBadInput() {
     for arguments in [["--nope"], ["--color"], ["--color", "nope"], ["--backdrop", "nope"], ["--probe", "x"],
                       ["--autostart"], ["--autostart", "maybe"],
-                      ["--pane"], ["--pane", "maybe"]] {
+                      ["--pane"], ["--pane", "maybe"], ["--pane-size"], ["--pane-size", "big"]] {
         #expect(Options.parse(arguments) == nil)
     }
 }
@@ -283,6 +283,7 @@ private func installedJob(in directory: URL) throws -> [String: Any] {
     #expect(Options.parse(["--pane", "off"])?.mode == .pane(false))
     #expect(Options.parse(["--pane-shell"])?.mode == .paneShell)
     #expect(Options.parse(["--pane-run"])?.mode == .paneRun)
+    #expect(Options.parse(["--pane-size", "60x16"])?.mode == .paneSize(PaneSize(cols: 60, rows: 16)))
 }
 
 @Test func shellHookKeepsExistingConfigAndRemovesCleanly() {
@@ -321,13 +322,39 @@ private func installedJob(in directory: URL) throws -> [String: Any] {
     #expect(ShellHook.quoted("/a b/it's") == "'/a b/it'\\''s'")
 }
 
-@Test func paneNeedsRoomBesideTheShell() {
-    #expect(!PaneLayout.fits(cols: 79))
-    #expect(PaneLayout.fits(cols: 80))
+@Test func paneDefaultsToDoubleItsOriginalSize() {
+    #expect(PaneSize.standard == PaneSize(cols: 48, rows: 12))
+}
+
+@Test func paneSizeParsesColumnsByRows() {
+    #expect(PaneSize(spec: "60x16") == PaneSize(cols: 60, rows: 16))
+}
+
+@Test func paneSizeRejectsUnusableValues() {
+    for spec in ["", "60", "x16", "60x", "axb", "11x8", "48x2", "200x8", "48x60"] {
+        #expect(PaneSize(spec: spec) == nil)
+    }
+}
+
+@Test func paneSizeIsRememberedAndFallsBackToStandard() {
+    let store = emptyStore()
+    #expect(PaneSize.stored(in: store) == .standard)
+    PaneSize(cols: 60, rows: 16).save(to: store)
+    #expect(PaneSize.stored(in: store) == PaneSize(cols: 60, rows: 16))
+}
+
+@Test func paneShrinksToLeaveTheShellRoom() {
+    #expect(PaneSize.standard.columns(inWindow: 120) == 48)
+    #expect(PaneSize.standard.columns(inWindow: 80) == 40)
+}
+
+@Test func paneIsSkippedWhenWindowIsTooNarrow() {
+    #expect(PaneSize.standard.columns(inWindow: 52) == 12)
+    #expect(PaneSize.standard.columns(inWindow: 51) == nil)
 }
 
 private func tmuxWords() -> [String] {
-    PaneLayout.tmuxArguments(tmux: "/bin/tmux", shell: "/bin/zsh", executable: "/bin/soundcrest")
+    PaneLayout.tmuxArguments(tmux: "/bin/tmux", shell: "/bin/zsh", executable: "/bin/soundcrest", paneCols: 40)
 }
 
 @Test func paneUsesItsOwnHiddenTmuxServer() {
@@ -346,7 +373,7 @@ private func tmuxWords() -> [String] {
 @Test func paneOpensRightColumnWithoutTakingFocus() {
     let words = tmuxWords()
     let split = try! #require(words.firstIndex(of: "split-window"))
-    #expect(Array(words[split...]).prefix(5) == ["split-window", "-d", "-h", "-l", "24"])
+    #expect(Array(words[split...]).prefix(5) == ["split-window", "-d", "-h", "-l", "40"])
     #expect(words.contains("'/bin/soundcrest' --pane-run"))
 }
 

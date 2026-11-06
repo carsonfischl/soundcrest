@@ -1,7 +1,7 @@
 /// Parsed command line. `color` and `backdrop` are nil unless passed explicitly.
 public struct Options: Equatable, Sendable {
     public enum Mode: Equatable, Sendable {
-        case both, terminal, wallpaper, wallpaperRun, toggle, autostart(Bool), pane(Bool), paneShell, paneRun, probe(Double), help
+        case both, terminal, wallpaper, wallpaperRun, toggle, autostart(Bool), pane(Bool), paneSize(PaneSize), paneShell, paneRun, probe(Double), help
     }
 
     public var mode = Mode.both
@@ -31,6 +31,9 @@ public struct Options: Equatable, Sendable {
                 case "off": options.mode = .pane(false)
                 default: return nil
                 }
+            case "--pane-size":
+                guard let size = rest.popFirst().flatMap(PaneSize.init(spec:)) else { return nil }
+                options.mode = .paneSize(size)
             case "--pane-shell": options.mode = .paneShell
             case "--pane-run": options.mode = .paneRun
             case "--scope": options.scope = true

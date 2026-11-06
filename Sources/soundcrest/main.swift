@@ -13,6 +13,7 @@ usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
   --toggle           turn the desktop background on or off
   --autostart on|off start the desktop background at login, or stop doing so
   --pane on|off      open new Terminal windows with a small waveform pane
+  --pane-size CxR    pane size in columns and rows, default 48x12
   --probe SECONDS    print input levels instead of drawing, then exit
   --help             show this help
 
@@ -92,6 +93,10 @@ case .pane(let enabled):
         FileHandle.standardError.write(Data("soundcrest: \(error.localizedDescription)\n".utf8))
         exit(1)
     }
+    exit(0)
+case .paneSize(let size):
+    size.save(to: .standard)
+    print("soundcrest: new panes will be \(size.cols)x\(size.rows).")
     exit(0)
 case .paneShell:
     Pane.openShell()

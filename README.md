@@ -59,7 +59,11 @@ a small waveform at the top right. Your shell wraps before the right column.
 tmux setup is not used, and there is no status bar or prefix key.
 
 Hold Fn while dragging to select text across the window, or drag normally to copy
-from your shell. Windows under 80 columns open without the pane.
+from your shell.
+
+The pane is 48 columns by 12 rows. Change it for new windows with
+`soundcrest --pane-size 60x16`. It narrows to leave your shell 40 columns, and
+windows under 52 columns open without it.
 
 ## Colours and backdrop
 
