@@ -12,6 +12,7 @@ usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
   --wallpaper        desktop background only
   --toggle           turn the desktop background on or off
   --autostart on|off start the desktop background at login, or stop doing so
+  --pane on|off      open new Terminal windows with a small waveform pane
   --probe SECONDS    print input levels instead of drawing, then exit
   --help             show this help
 
@@ -77,6 +78,25 @@ case .autostart(let enabled):
         exit(1)
     }
     exit(0)
+case .pane(let enabled):
+    do {
+        if enabled {
+            guard let path = Bundle.main.executablePath else { exit(1) }
+            try ShellHook.install(executable: LoginItem.stablePath(path))
+            print("soundcrest: new Terminal windows will open with the pane.")
+        } else {
+            try ShellHook.remove()
+            print("soundcrest: new Terminal windows will open without the pane.")
+        }
+    } catch {
+        FileHandle.standardError.write(Data("soundcrest: \(error.localizedDescription)\n".utf8))
+        exit(1)
+    }
+    exit(0)
+case .paneShell:
+    Pane.openShell()
+case .paneRun:
+    Pane.run(look)
 case .both:
     showBackground()
 default:

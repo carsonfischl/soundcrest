@@ -26,6 +26,8 @@ On first use, allow your terminal app under System Settings > Privacy & Security
     soundcrest --terminal    # terminal view only
     soundcrest --wallpaper   # desktop background only
     soundcrest --toggle      # turn the desktop background on or off
+    soundcrest --pane on     # open new Terminal windows with a waveform pane
+    soundcrest --pane off    # open them without it
     soundcrest --autostart on   # start the desktop background at login
     soundcrest --autostart off  # stop starting it at login
 
@@ -48,6 +50,16 @@ next login.
 launchd hung waiting on the audio service and system audio stopped working until
 `sudo killall coreaudiod`. A missing audio permission is the suspected cause. If
 this happens, run that command, then `soundcrest --autostart off`.
+
+## Pane
+
+`--pane on` adds a block to `~/.zshrc` so each new Terminal.app window opens with
+a small waveform at the top right. Your shell wraps before the right column.
+`--pane off` removes the block. It needs tmux, which runs out of sight: your own
+tmux setup is not used, and there is no status bar or prefix key.
+
+Hold Fn while dragging to select text across the window, or drag normally to copy
+from your shell. Windows under 80 columns open without the pane.
 
 ## Colours and backdrop
 

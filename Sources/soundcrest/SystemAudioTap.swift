@@ -32,13 +32,17 @@ private func read<T>(_ selector: AudioObjectPropertySelector, of object: AudioOb
     return value
 }
 
-private func deviceUID(_ device: AudioDeviceID) throws -> String {
-    var uid: Unmanaged<CFString>?
+private func readString(_ selector: AudioObjectPropertySelector, of object: AudioObjectID) throws -> String {
+    var value: Unmanaged<CFString>?
     var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-    var property = address(kAudioDevicePropertyDeviceUID)
-    try check(AudioObjectGetPropertyData(device, &property, 0, nil, &size, &uid), "read device UID")
-    guard let uid else { throw TapError.coreAudio("read device UID", -1) }
-    return uid.takeRetainedValue() as String
+    var property = address(selector)
+    try check(AudioObjectGetPropertyData(object, &property, 0, nil, &size, &value), "read string")
+    guard let value else { throw TapError.coreAudio("read string", -1) }
+    return value.takeRetainedValue() as String
+}
+
+private func deviceUID(_ device: AudioDeviceID) throws -> String {
+    try readString(kAudioDevicePropertyDeviceUID, of: device)
 }
 
 func defaultOutputDevice() throws -> AudioDeviceID {
@@ -55,17 +59,19 @@ private func objectIDs(_ selector: AudioObjectPropertySelector, of object: Audio
     return ids
 }
 
-/// Whether any process but this one is sending audio to an output. Device-level
+/// Whether another app is sending audio to an output. Device-level
 /// "is running" cannot answer this, because our own tap keeps the device running.
 /// Assumes yes when Core Audio cannot be asked, so the display keeps working.
 func otherProcessIsPlaying() -> Bool {
     let ownID = ProcessInfo.processInfo.processIdentifier
     guard let processes = try? objectIDs(kAudioHardwarePropertyProcessObjectList,
                                          of: AudioObjectID(kAudioObjectSystemObject)) else { return true }
-    return processes.contains { process in
-        (try? read(kAudioProcessPropertyIsRunningOutput, of: process, initial: UInt32(0))) == 1
-            && (try? read(kAudioProcessPropertyPID, of: process, initial: pid_t(0))) != ownID
-    }
+    return AudioClient.anyPlaying(processes.compactMap { process in
+        guard (try? read(kAudioProcessPropertyPID, of: process, initial: pid_t(0))) != ownID else { return nil }
+        return AudioClient(
+            bundleID: try? readString(kAudioProcessPropertyBundleID, of: process),
+            isRunningOutput: (try? read(kAudioProcessPropertyIsRunningOutput, of: process, initial: UInt32(0))) == 1)
+    })
 }
 
 /// Captures the system mix with a Core Audio process tap. The tap sits beside
@@ -150,4 +156,45 @@ final class SystemAudioTap {
             tapID = AudioObjectID(kAudioObjectUnknown)
         }
     }
+}
+
+/// Runs the tap only while something plays, so an idle Mac can sleep.
+final class GatedTap {
+    private static let holdSeconds = 5.0
+
+    private let ring: SampleRing
+    private let tap: SystemAudioTap
+    private var gate = TapGate(hold: GatedTap.holdSeconds)
+    private var loggedFailure = false
+
+    var isRunning: Bool { tap.isRunning }
+    var sampleRate: Float { tap.sampleRate }
+
+    init(ring: SampleRing) {
+        self.ring = ring
+        tap = SystemAudioTap(ring: ring)
+    }
+
+    func update() {
+        let wanted = gate.update(outputActive: otherProcessIsPlaying(),
+                                 now: ProcessInfo.processInfo.systemUptime)
+        if tap.isRunning {
+            // Reopened below, which also follows a new default output device.
+            let moved = (try? defaultOutputDevice()).map { $0 != tap.outputDevice } ?? false
+            if !wanted || moved {
+                tap.stop()
+                ring.clear()
+            }
+        }
+        guard wanted, !tap.isRunning else { return }
+        do {
+            try tap.start()
+            loggedFailure = false
+        } catch {
+            if !loggedFailure { NSLog("soundcrest: %@", error.localizedDescription) }
+            loggedFailure = true
+        }
+    }
+
+    func stop() { tap.stop() }
 }

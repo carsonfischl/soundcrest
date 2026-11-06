@@ -145,19 +145,16 @@ private extension NSColor {
     private static let settledLevel: Float = 0.002
     private static let ticksPerSecond = 60
     private static let tapChecksPerSecond = 4
-    private static let tapHoldSeconds = 5.0
 
     private let look: Look
     private let ring = SampleRing(capacity: 1 << 16)
     private let analyzer = Analyzer()
-    private lazy var tap = SystemAudioTap(ring: ring)
+    private lazy var tap = GatedTap(ring: ring)
     private var samples = [Float](repeating: 0, count: Analyzer.fftSize)
     private var windows: [WaveWindow] = []
     private var statusItem: NSStatusItem?
     private var settled = false
     private var tickNumber = 0
-    private var gate = TapGate(hold: WallpaperApp.tapHoldSeconds)
-    private var loggedTapFailure = false
 
     init(look: Look) { self.look = look }
 
@@ -196,7 +193,7 @@ private extension NSColor {
 
     @objc private func tick() {
         tickNumber += 1
-        if tickNumber % (Self.ticksPerSecond / Self.tapChecksPerSecond) == 0 { updateTap() }
+        if tickNumber % (Self.ticksPerSecond / Self.tapChecksPerSecond) == 0 { tap.update() }
         if !tap.isRunning && settled { return }
 
         ring.readLatest(into: &samples)
@@ -207,27 +204,5 @@ private extension NSColor {
 
         let heights = Silhouette.heights(levels: levels, columns: Self.columnCount)
         windows.forEach { $0.draw(heights: heights) }
-    }
-
-    /// Runs the tap only while something plays, so an idle Mac can sleep.
-    private func updateTap() {
-        let wanted = gate.update(outputActive: otherProcessIsPlaying(),
-                                 now: ProcessInfo.processInfo.systemUptime)
-        if tap.isRunning {
-            // Reopened below, which also follows a new default output device.
-            let moved = (try? defaultOutputDevice()).map { $0 != tap.outputDevice } ?? false
-            if !wanted || moved {
-                tap.stop()
-                ring.clear()
-            }
-        }
-        guard wanted, !tap.isRunning else { return }
-        do {
-            try tap.start()
-            loggedTapFailure = false
-        } catch {
-            if !loggedTapFailure { NSLog("soundcrest: %@", error.localizedDescription) }
-            loggedTapFailure = true
-        }
     }
 }

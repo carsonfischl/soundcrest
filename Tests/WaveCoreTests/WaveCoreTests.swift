@@ -184,7 +184,8 @@ private func gateOpen(hold: Double = 5, at steps: [(active: Bool, now: Double)])
 
 @Test func optionsRejectBadInput() {
     for arguments in [["--nope"], ["--color"], ["--color", "nope"], ["--backdrop", "nope"], ["--probe", "x"],
-                      ["--autostart"], ["--autostart", "maybe"]] {
+                      ["--autostart"], ["--autostart", "maybe"],
+                      ["--pane"], ["--pane", "maybe"]] {
         #expect(Options.parse(arguments) == nil)
     }
 }
@@ -275,4 +276,92 @@ private func installedJob(in directory: URL) throws -> [String: Any] {
     #expect(LoginItem.stablePath("/opt/homebrew/Cellar/soundcrest/0.1.0/bin/soundcrest")
         == "/opt/homebrew/bin/soundcrest")
     #expect(LoginItem.stablePath("/Users/me/.local/bin/soundcrest") == "/Users/me/.local/bin/soundcrest")
+}
+
+@Test func optionsSelectPane() {
+    #expect(Options.parse(["--pane", "on"])?.mode == .pane(true))
+    #expect(Options.parse(["--pane", "off"])?.mode == .pane(false))
+    #expect(Options.parse(["--pane-shell"])?.mode == .paneShell)
+    #expect(Options.parse(["--pane-run"])?.mode == .paneRun)
+}
+
+@Test func shellHookKeepsExistingConfigAndRemovesCleanly() {
+    let original = "export A=1\n\nalias b=c\n"
+    let added = ShellHook.adding(to: original, executable: "/usr/local/bin/soundcrest")
+    #expect(added.hasPrefix(original))
+    #expect(added.contains("exec '/usr/local/bin/soundcrest' --pane-shell"))
+    #expect(ShellHook.removing(from: added) == original)
+}
+
+@Test func shellHookRestoresFileWithoutTrailingNewline() {
+    let original = "export A=1"
+    #expect(ShellHook.removing(from: ShellHook.adding(to: original, executable: "/x")) == original)
+}
+
+@Test func shellHookIsNotDuplicatedAndPicksUpNewPath() {
+    let once = ShellHook.adding(to: "", executable: "/old/soundcrest")
+    let twice = ShellHook.adding(to: once, executable: "/new/soundcrest")
+    #expect(twice.components(separatedBy: "--pane-shell").count == 2)
+    #expect(twice.contains("/new/soundcrest"))
+    #expect(!twice.contains("/old/soundcrest"))
+}
+
+@Test func shellHookRemoveLeavesOtherFilesAlone() {
+    #expect(ShellHook.removing(from: "export A=1\n") == "export A=1\n")
+}
+
+@Test func shellHookRunsOnlyInInteractiveTerminalApp() {
+    let block = ShellHook.adding(to: "", executable: "/x")
+    for guardText in ["-o interactive", "-t 0", "-t 1", "Apple_Terminal", "-z \"$TMUX\"", "-z \"$SOUNDCREST_NO_PANE\"", "-x '/x'"] {
+        #expect(block.contains(guardText))
+    }
+}
+
+@Test func shellQuotingSurvivesSpacesAndApostrophes() {
+    #expect(ShellHook.quoted("/a b/it's") == "'/a b/it'\\''s'")
+}
+
+@Test func paneNeedsRoomBesideTheShell() {
+    #expect(!PaneLayout.fits(cols: 79))
+    #expect(PaneLayout.fits(cols: 80))
+}
+
+private func tmuxWords() -> [String] {
+    PaneLayout.tmuxArguments(tmux: "/bin/tmux", shell: "/bin/zsh", executable: "/bin/soundcrest")
+}
+
+@Test func paneUsesItsOwnHiddenTmuxServer() {
+    let words = tmuxWords()
+    #expect(Array(words.prefix(4)) == ["-L", "soundcrest", "-f", "/dev/null"])
+    #expect(words.contains("status"))
+    #expect(words.contains("prefix"))
+}
+
+@Test func paneSessionEndsWithItsWindow() {
+    let words = tmuxWords()
+    #expect(words.contains("destroy-unattached"))
+    #expect(words.contains("'/bin/zsh' -l; '/bin/tmux' -L soundcrest kill-session"))
+}
+
+@Test func paneOpensRightColumnWithoutTakingFocus() {
+    let words = tmuxWords()
+    let split = try! #require(words.firstIndex(of: "split-window"))
+    #expect(Array(words[split...]).prefix(5) == ["split-window", "-d", "-h", "-l", "24"])
+    #expect(words.contains("'/bin/soundcrest' --pane-run"))
+}
+
+@Test func listenersDoNotCountAsPlaying() {
+    let listening = AudioClient(bundleID: "local.soundcrest", isRunningOutput: true)
+    #expect(!AudioClient.anyPlaying([listening, listening]))
+}
+
+@Test func otherAppsCountAsPlaying() {
+    let idle = AudioClient(bundleID: "com.apple.Music", isRunningOutput: false)
+    let chrome = AudioClient(bundleID: "com.google.Chrome.helper", isRunningOutput: true)
+    #expect(!AudioClient.anyPlaying([idle]))
+    #expect(AudioClient.anyPlaying([idle, chrome]))
+}
+
+@Test func unnamedProcessStillCountsAsPlaying() {
+    #expect(AudioClient.anyPlaying([AudioClient(bundleID: nil, isRunningOutput: true)]))
 }
