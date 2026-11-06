@@ -9,7 +9,10 @@ Requires macOS 14.2 or later. No BlackHole or other virtual audio device needed.
 ## Install
 
     brew tap carsonfischl/tap
+    brew trust --formula carsonfischl/tap/soundcrest
     brew install soundcrest
+
+Homebrew 7 refuses formulae from third-party taps until you trust them.
 
 Homebrew builds it from source, which needs Xcode or the Command Line Tools. If
 it reports the Xcode license has not been accepted, run the command it suggests.
