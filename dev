@@ -1,0 +1,26 @@
+#!/bin/sh
+# Build helper. Uses Command Line Tools directly, because /usr/bin/make and
+# /usr/bin/swift refuse to run while the Xcode license is unaccepted.
+set -e
+cd "$(dirname "$0")"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
+tools="$DEVELOPER_DIR/Library/Developer"
+prefix="${PREFIX:-$HOME/.local}"
+
+case "${1:-build}" in
+build) swift build -c release ;;
+run) swift build -c release && shift && exec .build/release/soundcrest "$@" ;;
+test)
+    swift test -Xswiftc -F -Xswiftc "$tools/Frameworks" \
+        -Xlinker -F -Xlinker "$tools/Frameworks" \
+        -Xlinker -rpath -Xlinker "$tools/Frameworks" \
+        -Xlinker -rpath -Xlinker "$tools/usr/lib"
+    ;;
+install)
+    swift build -c release
+    install -d "$prefix/bin"
+    install .build/release/soundcrest "$prefix/bin/soundcrest"
+    echo "installed $prefix/bin/soundcrest"
+    ;;
+*) echo "usage: ./dev [build|run|test|install]" >&2; exit 2 ;;
+esac
