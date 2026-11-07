@@ -8,5 +8,9 @@
     <string>soundcrest</string>
     <key>NSAudioCaptureUsageDescription</key>
     <string>soundcrest reads system audio to draw a waveform. Audio is never stored.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>soundcrest uses your location to show local weather in the Terminal pane. A rounded position goes to Open-Meteo for the forecast, and to Apple for the place name.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>soundcrest uses your location to show local weather in the Terminal pane. A rounded position goes to Open-Meteo for the forecast, and to Apple for the place name.</string>
 </dict>
 </plist>

@@ -21,9 +21,13 @@ public enum PaneLayout {
             ["set-option", "-g", "pane-border-style", "fg=colour238"],
             ["set-option", "-g", "pane-active-border-style", "fg=colour238"],
             ["set-hook", "-g", "client-resized", "resize-pane -t :.1 -x \(paneCols)"],
-            // Keep typing in the shell, and copy selections to the clipboard.
-            ["bind-key", "-n", "MouseDown1Pane", "select-pane", "-t", ":.0"],
+            // Keep typing in the shell, pass clicks to whichever pane wants them
+            // (the waveform pane uses them to switch views and open articles),
+            // and copy selections to the clipboard.
+            ["bind-key", "-n", "MouseDown1Pane", "select-pane", "-t", ":.0", "\\;", "send-keys", "-M"],
             ["unbind-key", "-n", "MouseDrag1Border"],
+            // Option-Tab (with Option as Meta) cycles the sections under the waveform.
+            ["bind-key", "-n", "M-Tab", "send-keys", "-t", ":.1", "Tab"],
             ["bind-key", "-T", "copy-mode", "MouseDragEnd1Pane",
              "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"],
             ["new-session", "\(ShellHook.quoted(shell)) -l; \(kill)"],

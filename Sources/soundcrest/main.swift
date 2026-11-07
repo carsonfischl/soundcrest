@@ -14,6 +14,19 @@ usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
   --autostart on|off start the desktop background at login, or stop doing so
   --pane on|off      open new Terminal windows with a small waveform pane
   --pane-size CxR    pane size in columns and rows, default 48x12
+  --pane-info on|off, --pane-weather on|off, --pane-news on|off
+                     show or hide each view under the pane's waveform
+  --weather-location CITY|auto
+                     weather for CITY instead of your location
+  --news-sources LIST
+                     comma-separated from \(NewsSource.presets.map(\.id).joined(separator: ", "))
+                     (default \(NewsSource.defaults.map(\.id).joined(separator: ",")))
+  --spotify-client-id ID
+                     let the pane browse your Spotify playlists (see README)
+  --youtube-client ID SECRET
+                     let the pane browse your YouTube playlists (see README)
+  --music-sign-out spotify|youtube
+                     forget that service's sign-in
   --probe SECONDS    print input levels instead of drawing, then exit
   --help             show this help
 
@@ -24,6 +37,9 @@ usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
 
 --color and --backdrop are remembered for next time.
 terminal keys: m switch view, q quit
+pane: click the waveform to play from Spotify or YouTube playlists; click the
+views under it, or press Option-Tab (needs Terminal's "Use Option as Meta key"),
+to switch between info, weather and news
 background: stays on after the terminal closes; \(HotKey.title) or the menu bar
 icon turns it off from anywhere
 """
@@ -98,10 +114,33 @@ case .paneSize(let size):
     size.save(to: .standard)
     print("soundcrest: new panes will be \(size.cols)x\(size.rows).")
     exit(0)
+case .paneSection(let section, let enabled):
+    PaneSettings.setEnabled(section, enabled, in: .standard)
+    print("soundcrest: \(section.title) \(enabled ? "shown" : "hidden") under the pane's waveform.")
+    exit(0)
+case .weatherLocation(let place):
+    PaneSettings.setWeatherLocation(place, in: .standard)
+    print("soundcrest: weather for \(place ?? "your current location").")
+    exit(0)
+case .newsSources(let sources):
+    PaneSettings.setNewsSources(sources, in: .standard)
+    print("soundcrest: headlines from \(sources.map(\.name).joined(separator: ", ")).")
+    exit(0)
+case .musicCredentials(let service, let credentials):
+    credentials.save(service, in: .standard)
+    TokenStore.save(nil, for: service)
+    print("soundcrest: \(service.title) is set up. Click the pane's waveform to sign in.")
+    exit(0)
+case .musicSignOut(let service):
+    TokenStore.save(nil, for: service)
+    print("soundcrest: signed out of \(service.title).")
+    exit(0)
 case .paneShell:
     Pane.openShell()
 case .paneRun:
     Pane.run(look)
+case .locate:
+    MainActor.assumeIsolated { LocationHelper.run() }
 case .both:
     showBackground()
 default:
