@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreLocation
 import Foundation
@@ -64,3 +65,4 @@ enum LocationHelper {
         exit(0)
     }
 }
+#endif

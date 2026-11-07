@@ -102,6 +102,14 @@ public enum Panel {
         return lines
     }
 
+    /// The key that cycles tabs. Linux desktops keep Alt-Tab for switching
+    /// windows, so there the tabs are only clicked.
+    #if os(macOS)
+    static let tabHint = "⌥⇥"
+    #else
+    static let tabHint = ""
+    #endif
+
     /// `info  weather  news   ⌥⇥`, with the active tab in colour.
     public static func tabBar(_ sections: [PaneSection], active: PaneSection, width: Int) -> PanelLine {
         var line: PanelLine = []
@@ -109,9 +117,8 @@ public enum Panel {
             if index > 0 { line.append(Span("  ")) }
             line.append(section == active ? Span(section.title, .accentBold(0)) : Span(section.title, .dim))
         }
-        let hint = "⌥⇥"
-        let gap = width - Self.width(line) - hint.count
-        if gap >= 2 { line += [Span(String(repeating: " ", count: gap)), Span(hint, .dim)] }
+        let gap = width - Self.width(line) - tabHint.count
+        if !tabHint.isEmpty, gap >= 2 { line += [Span(String(repeating: " ", count: gap)), Span(tabHint, .dim)] }
         return clipped(line, to: width)
     }
 

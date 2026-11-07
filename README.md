@@ -4,7 +4,8 @@ Live waveform in your terminal of whatever your Mac is playing. It stays in one
 place: a flat line during silence that swells outward with the sound. Lows sit in
 the centre and highs toward the edges. Audio is read in memory and never stored.
 
-Requires macOS 14.2 or later. No BlackHole or other virtual audio device needed.
+Runs on macOS 14.2 or later, with no BlackHole or other virtual audio device
+needed, and on Linux with PulseAudio or PipeWire (see [Linux](#linux)).
 
 ## Install
 
@@ -156,6 +157,42 @@ Colours: `aurora` (default), `ember`, `ocean`, `forest`, `violet`, `mono`, or he
 Backdrops: `solid` (default), `translucent`, `transparent`. Your last choice is
 remembered, and passing one to a running background restarts it with the new look.
 
+## Linux
+
+On Linux, soundcrest has the terminal view and the pane. The desktop background,
+⌃⌥⌘W and `--autostart` are macOS only.
+
+It records the default output's monitor with `parec`, which works with
+PulseAudio and with PipeWire's pulse layer (the default on current Ubuntu,
+Fedora and Arch). Install it and tmux, then build with a Swift 6 toolchain from
+<https://swift.org/install>:
+
+    sudo apt install pulseaudio-utils tmux        # Debian, Ubuntu
+    sudo dnf install pulseaudio-utils tmux        # Fedora
+    sudo pacman -S libpulse tmux                  # Arch
+
+    ./dev install                                 # to ~/.local/bin
+    soundcrest                                    # terminal view
+    soundcrest --pane on                          # pane in new terminal windows
+
+`--pane on` adds the startup block to `~/.bashrc`, or to `~/.zshrc` if your shell
+is zsh. It opens the pane in local graphical terminals only. SSH sessions,
+editors' built-in terminals and text consoles get a plain shell. Switch views by
+clicking them, since Alt-Tab belongs to the desktop. Hold Shift while dragging to
+select text across the window. Copied text goes to `wl-copy` under Wayland, or
+`xclip` otherwise.
+
+Differences from macOS:
+
+- **Weather** has no Location Services, so name a place with
+  `soundcrest --weather-location CITY`.
+- **Spotify** songs play in the Spotify app through MPRIS (`dbus-send`), so start
+  Spotify first. MPRIS can't pass a playlist, so playback continues from
+  Spotify's own queue after the chosen song.
+- **Links** and sign-in pages open with `xdg-open`.
+- **info** reads `/etc/os-release`, `/proc` and `/sys`, and counts dpkg, pacman,
+  flatpak and Homebrew packages.
+
 ## Build from source
 
     ./dev run            # build and start
@@ -164,7 +201,10 @@ remembered, and passing one to a running background restarts it with the new loo
 
 ## Troubleshooting
 
-If the line stays flat while music plays, open System Settings > Privacy &
+On Linux, if the line stays flat, check that `parec --device=@DEFAULT_MONITOR@
+--raw | head -c 100000 | wc -c` prints a number while audio plays.
+
+On macOS, if the line stays flat while music plays, open System Settings > Privacy &
 Security > System Audio Recording and allow your terminal app, then restart it.
 
 `soundcrest --probe 5` prints raw input levels. `frames` rising with `peak` at 0

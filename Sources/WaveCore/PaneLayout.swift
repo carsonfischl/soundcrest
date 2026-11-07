@@ -3,6 +3,16 @@
 public enum PaneLayout {
     private static let socket = "soundcrest"
 
+    /// Where copied text goes: pbcopy on macOS; on Linux wl-copy under Wayland,
+    /// otherwise xclip.
+    static var clipboardCommand: String {
+        #if os(macOS)
+        return "pbcopy"
+        #else
+        return "if [ -n \"$WAYLAND_DISPLAY\" ]; then wl-copy; else xclip -selection clipboard; fi"
+        #endif
+    }
+
     public static func tmuxArguments(tmux: String, shell: String, executable: String,
                                      paneCols: Int) -> [String] {
         let kill = "\(ShellHook.quoted(tmux)) -L \(socket) kill-session"
@@ -29,7 +39,7 @@ public enum PaneLayout {
             // Option-Tab (with Option as Meta) cycles the sections under the waveform.
             ["bind-key", "-n", "M-Tab", "send-keys", "-t", ":.1", "Tab"],
             ["bind-key", "-T", "copy-mode", "MouseDragEnd1Pane",
-             "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"],
+             "send-keys", "-X", "copy-pipe-and-cancel", clipboardCommand],
             ["new-session", "\(ShellHook.quoted(shell)) -l; \(kill)"],
             ["split-window", "-d", "-h", "-l", "\(paneCols)", "\(ShellHook.quoted(executable)) --pane-run"],
         ]

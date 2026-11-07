@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Darwin
 import QuartzCore
@@ -206,3 +207,4 @@ private extension NSColor {
         windows.forEach { $0.draw(heights: heights) }
     }
 }
+#endif

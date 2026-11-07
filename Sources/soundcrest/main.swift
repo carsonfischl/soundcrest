@@ -3,16 +3,50 @@ import WaveCore
 
 enum View: String { case bars, scope }
 
-let usage = """
-soundcrest: live waveform of whatever your Mac is playing.
-
-usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
+#if os(macOS)
+let platformModes = """
   (no mode)          desktop background plus the terminal view
   --terminal         terminal view only
   --wallpaper        desktop background only
   --toggle           turn the desktop background on or off
   --autostart on|off start the desktop background at login, or stop doing so
   --pane on|off      open new Terminal windows with a small waveform pane
+"""
+let lookUsage = "[--backdrop BACKDROP] "
+let lookOptions = "  --backdrop KIND    solid, translucent or transparent (shows your wallpaper)\n"
+let platformNotes = """
+--color and --backdrop are remembered for next time.
+terminal keys: m switch view, q quit
+pane: click the waveform to play from Spotify or YouTube playlists; click the
+views under it, or press Option-Tab (needs Terminal's "Use Option as Meta key"),
+to switch between info, weather and news
+background: stays on after the terminal closes; \(HotKey.title) or the menu bar
+icon turns it off from anywhere
+"""
+let noSignalHint = "if audio is playing, allow your terminal under "
+    + "System Settings > Privacy & Security > System Audio Recording"
+#else
+let platformModes = """
+  (no mode), --terminal  the waveform in this terminal
+  --pane on|off      open new terminal windows with a small waveform pane
+"""
+let lookUsage = ""
+let lookOptions = ""
+let platformNotes = """
+--color is remembered for next time.
+terminal keys: m switch view, q quit
+pane: click the waveform to play from Spotify or YouTube playlists; click the
+views under it to switch between info, weather and news
+audio: recorded from the default output with parec (PulseAudio or PipeWire)
+"""
+let noSignalHint = "is parec installed, and is PulseAudio or PipeWire running?"
+#endif
+
+let usage = """
+soundcrest: live waveform of whatever your computer is playing.
+
+usage: soundcrest [mode] [--color COLOR] \(lookUsage)[--scope]
+\(platformModes)
   --pane-size CxR    pane size in columns and rows, default 48x12
   --pane-info on|off, --pane-weather on|off, --pane-news on|off
                      show or hide each view under the pane's waveform
@@ -32,16 +66,9 @@ usage: soundcrest [mode] [--color COLOR] [--backdrop BACKDROP] [--scope]
 
   --color COLOR      \(Palette.presets.keys.sorted().joined(separator: ", ")),
                      a hex colour (ff0000) or two (ff0000,0000ff: centre,edge)
-  --backdrop KIND    solid, translucent or transparent (shows your wallpaper)
-  --scope            start the terminal in oscilloscope view
+\(lookOptions)  --scope            start the terminal in oscilloscope view
 
---color and --backdrop are remembered for next time.
-terminal keys: m switch view, q quit
-pane: click the waveform to play from Spotify or YouTube playlists; click the
-views under it, or press Option-Tab (needs Terminal's "Use Option as Meta key"),
-to switch between info, weather and news
-background: stays on after the terminal closes; \(HotKey.title) or the menu bar
-icon turns it off from anywhere
+\(platformNotes)
 """
 
 guard let options = Options.parse(Array(CommandLine.arguments.dropFirst())) else {
@@ -55,6 +82,7 @@ if options.mode == .help {
 
 let look = Look.resolve(options, store: .standard)
 
+#if os(macOS)
 /// Starts the background, restarting it if the caller asked for a new look.
 func showBackground() {
     if Wallpaper.isRunning {
@@ -63,8 +91,10 @@ func showBackground() {
     }
     Wallpaper.launch(look)
 }
+#endif
 
 switch options.mode {
+#if os(macOS)
 case .wallpaperRun:
     MainActor.assumeIsolated { Wallpaper.run(look) }
 case .wallpaper:
@@ -95,15 +125,24 @@ case .autostart(let enabled):
         exit(1)
     }
     exit(0)
+case .locate:
+    MainActor.assumeIsolated { LocationHelper.run() }
+case .both:
+    showBackground()
+#else
+case .wallpaper, .wallpaperRun, .toggle, .autostart, .locate:
+    FileHandle.standardError.write(Data("soundcrest: the desktop background is only on macOS.\n".utf8))
+    exit(2)
+#endif
 case .pane(let enabled):
     do {
         if enabled {
             guard let path = Bundle.main.executablePath else { exit(1) }
             try ShellHook.install(executable: LoginItem.stablePath(path))
-            print("soundcrest: new Terminal windows will open with the pane.")
+            print("soundcrest: new terminal windows will open with the pane (\(ShellHook.file.path)).")
         } else {
             try ShellHook.remove()
-            print("soundcrest: new Terminal windows will open without the pane.")
+            print("soundcrest: new terminal windows will open without the pane.")
         }
     } catch {
         FileHandle.standardError.write(Data("soundcrest: \(error.localizedDescription)\n".utf8))
@@ -139,10 +178,6 @@ case .paneShell:
     Pane.openShell()
 case .paneRun:
     Pane.run(look)
-case .locate:
-    MainActor.assumeIsolated { LocationHelper.run() }
-case .both:
-    showBackground()
 default:
     break
 }
@@ -150,6 +185,7 @@ default:
 var view = options.scope ? View.scope : .bars
 
 let ring = SampleRing(capacity: 1 << 16)
+#if os(macOS)
 let tap = SystemAudioTap(ring: ring)
 do {
     try tap.start()
@@ -157,6 +193,14 @@ do {
     FileHandle.standardError.write(Data("soundcrest: \(error.localizedDescription)\n".utf8))
     exit(1)
 }
+#else
+let tap = LinuxCapture(ring: ring)
+tap.start()
+if let failure = tap.failure {
+    FileHandle.standardError.write(Data("soundcrest: \(failure)\n".utf8))
+    exit(1)
+}
+#endif
 
 var samples = [Float](repeating: 0, count: Analyzer.fftSize)
 
@@ -197,11 +241,16 @@ while running {
 
     // Follow the default output when it changes, e.g. plugging in headphones.
     frameNumber += 1
+    #if os(macOS)
     if frameNumber % framesPerSecond == 0,
        let current = try? defaultOutputDevice(), current != tap.outputDevice {
         tap.stop()
         try? tap.start()
     }
+    #else
+    // parec follows the default output itself; restart it if it exits.
+    if frameNumber % framesPerSecond == 0 { tap.update() }
+    #endif
 
     ring.readLatest(into: &samples)
     silentFrames = samples.contains { $0 != 0 } ? 0 : silentFrames + 1
@@ -216,8 +265,7 @@ while running {
 
     var status = "soundcrest · \(view.rawValue) · m view · q quit"
     if silentFrames > hintAfterFrames {
-        status += " · no signal: if audio is playing, allow your terminal under "
-            + "System Settings > Privacy & Security > System Audio Recording"
+        status += " · no signal: " + noSignalHint
     }
     terminal.write(Renderer.frame(canvas, status: status, palette: look.palette))
     usleep(frameMicros)
@@ -225,6 +273,8 @@ while running {
 
 tap.stop()
 terminal.restore()
+#if os(macOS)
 if options.mode == .both {
     print("soundcrest: background still on. \(HotKey.title) or `soundcrest --toggle` turns it off.")
 }
+#endif

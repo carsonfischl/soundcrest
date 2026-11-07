@@ -85,7 +85,7 @@ public final class RSSReader: NSObject, XMLParserDelegate {
         let reader = RSSReader(tag: tag)
         let parser = XMLParser(data: data)
         parser.delegate = reader
-        parser.parse()
+        _ = parser.parse()
         return reader.items
     }
 

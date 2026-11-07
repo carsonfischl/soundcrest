@@ -1,10 +1,9 @@
-import Accelerate
+import Foundation
 
 /// Turns time-domain samples into smoothed, log-spaced band levels in 0...1.
 public final class Analyzer {
     public static let fftSize = 4096
 
-    private static let log2n = vDSP_Length(12)
     private static let minHz: Float = 40
     private static let maxHz: Float = 16_000
     private static let rangeDB: Float = 50
@@ -14,24 +13,16 @@ public final class Analyzer {
     /// Music rolls off with frequency; this tilt keeps treble visible.
     private static let tiltDBPerOctave: Float = 3
 
-    private let setup: FFTSetup
-    private let window: [Float]
-    private var real: [Float]
-    private var imag: [Float]
-    private var magnitudes: [Float]
+    private let fft = RealFFT(size: Analyzer.fftSize)
+    /// Hann, matching vDSP's `hanningDenormalized`.
+    private let window: [Float] = (0..<Analyzer.fftSize).map {
+        Float(0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(Analyzer.fftSize)))
+    }
+    private var magnitudes: [Float] = .init(repeating: 0, count: Analyzer.fftSize / 2)
     private var levels: [Float] = []
     private var referenceDB = Analyzer.referenceFloorDB
 
-    public init() {
-        setup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2))!
-        window = vDSP.window(ofType: Float.self, usingSequence: .hanningDenormalized,
-                             count: Self.fftSize, isHalfWindow: false)
-        real = .init(repeating: 0, count: Self.fftSize / 2)
-        imag = real
-        magnitudes = real
-    }
-
-    deinit { vDSP_destroy_fftsetup(setup) }
+    public init() {}
 
     /// `samples` must hold exactly `fftSize` values.
     public func bands(samples: [Float], count: Int, sampleRate: Float) -> [Float] {
@@ -52,19 +43,7 @@ public final class Analyzer {
     }
 
     private func computeMagnitudes(_ samples: [Float]) {
-        let windowed = vDSP.multiply(samples, window)
-        real.withUnsafeMutableBufferPointer { realPtr in
-            imag.withUnsafeMutableBufferPointer { imagPtr in
-                var split = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
-                windowed.withUnsafeBytes {
-                    vDSP_ctoz($0.bindMemory(to: DSPComplex.self).baseAddress!, 2,
-                              &split, 1, vDSP_Length(Self.fftSize / 2))
-                }
-                vDSP_fft_zrip(setup, &split, 1, Self.log2n, FFTDirection(kFFTDirection_Forward))
-                split.imagp[0] = 0  // Holds the Nyquist term after zrip.
-                vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(Self.fftSize / 2))
-            }
-        }
+        magnitudes = fft.magnitudes(of: zip(samples, window).map { $0 * $1 })
     }
 
     private func bandDB(_ band: Int, of count: Int, sampleRate: Float) -> Float {

@@ -1,8 +1,25 @@
 import Foundation
 
-/// The `.zshrc` block that opens new Terminal.app windows with the pane. It has
-/// to stay safe at every shell start, so anything unexpected means a plain shell.
+/// The shell startup block that opens new terminal windows with the pane. It
+/// has to stay safe at every shell start, so anything unexpected means a plain
+/// shell.
 public enum ShellHook {
+    /// Which terminals get the pane.
+    public enum Flavor: Sendable {
+        /// Terminal.app on macOS, from `.zshrc`.
+        case terminalApp
+        /// Any local graphical terminal on Linux, from `.zshrc` or `.bashrc`.
+        case linuxDesktop
+
+        public static var current: Flavor {
+            #if os(macOS)
+            return .terminalApp
+            #else
+            return .linuxDesktop
+            #endif
+        }
+    }
+
     private static let begin = "# >>> soundcrest pane >>>"
     private static let end = "# <<< soundcrest pane <<<"
 
@@ -10,13 +27,28 @@ public enum ShellHook {
         "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    public static func adding(to text: String, executable: String) -> String {
+    public static func adding(to text: String, executable: String, flavor: Flavor = .current) -> String {
         let path = quoted(executable)
+        let condition: String
+        switch flavor {
+        case .terminalApp:
+            condition = """
+            [[ -o interactive && -t 0 && -t 1 && "$TERM_PROGRAM" == Apple_Terminal \\
+                  && -z "$TMUX" && -z "$SOUNDCREST_NO_PANE" && -x \(path) ]]
+            """
+        case .linuxDesktop:
+            // Works in bash and zsh. Skips SSH sessions, editors' built-in
+            // terminals and consoles without a display.
+            condition = """
+            [[ $- == *i* && -t 0 && -t 1 && -z "$TMUX" && -z "$SOUNDCREST_NO_PANE" \\
+                  && -z "$SSH_CONNECTION" && -n "${DISPLAY:-$WAYLAND_DISPLAY}" \\
+                  && "$TERM_PROGRAM" != vscode && -x \(path) ]]
+            """
+        }
         return removing(from: text) + """
 
         \(begin)
-        if [[ -o interactive && -t 0 && -t 1 && "$TERM_PROGRAM" == Apple_Terminal \\
-              && -z "$TMUX" && -z "$SOUNDCREST_NO_PANE" && -x \(path) ]]; then
+        if \(condition); then
           exec \(path) --pane-shell
         fi
         \(end)
@@ -31,12 +63,15 @@ public enum ShellHook {
         return String(text[..<start.lowerBound] + text[finish.upperBound...])
     }
 
-    /// Honours ZDOTDIR and follows a symlinked dotfile.
+    /// `.zshrc` (honouring ZDOTDIR) for zsh users and on macOS, otherwise
+    /// `.bashrc`. Follows a symlinked dotfile.
     public static var file: URL {
         let environment = ProcessInfo.processInfo.environment
-        let home = environment["ZDOTDIR"].map(URL.init(fileURLWithPath:))
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".zshrc").resolvingSymlinksInPath()
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let usesZsh = Flavor.current == .terminalApp || environment["SHELL"]?.hasSuffix("/zsh") == true
+        guard usesZsh else { return home.appendingPathComponent(".bashrc").resolvingSymlinksInPath() }
+        let directory = environment["ZDOTDIR"].map(URL.init(fileURLWithPath:)) ?? home
+        return directory.appendingPathComponent(".zshrc").resolvingSymlinksInPath()
     }
 
     public static func install(executable: String, in url: URL = file) throws {

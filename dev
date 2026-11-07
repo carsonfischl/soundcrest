@@ -1,16 +1,20 @@
 #!/bin/sh
-# Build helper. Uses Command Line Tools directly, because /usr/bin/make and
-# /usr/bin/swift refuse to run while the Xcode license is unaccepted.
+# Build helper. On macOS it uses Command Line Tools directly, because
+# /usr/bin/make and /usr/bin/swift refuse to run while the Xcode license is
+# unaccepted. On Linux it uses whatever swift is on PATH.
 set -e
 cd "$(dirname "$0")"
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
-tools="$DEVELOPER_DIR/Library/Developer"
 prefix="${PREFIX:-$HOME/.local}"
+if [ "$(uname)" = Darwin ]; then
+    export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
+    tools="$DEVELOPER_DIR/Library/Developer"
+fi
 
 case "${1:-build}" in
 build) swift build -c release ;;
 run) swift build -c release && shift && exec .build/release/soundcrest "$@" ;;
 test)
+    if [ -z "$tools" ]; then exec swift test; fi
     swift test -Xswiftc -F -Xswiftc "$tools/Frameworks" \
         -Xlinker -F -Xlinker "$tools/Frameworks" \
         -Xlinker -rpath -Xlinker "$tools/Frameworks" \

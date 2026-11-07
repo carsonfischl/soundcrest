@@ -23,10 +23,10 @@ private func text(_ lines: [PanelLine]) -> [String] { lines.map { $0.map(\.text)
 
 @Test func tabBarHighlightsActiveAndFitsWidth() {
     let bar = Panel.tabBar(PaneSection.allCases, active: .weather, width: 30)
-    #expect(Panel.width(bar) == 30)
+    #expect(Panel.width(bar) == (Panel.tabHint.isEmpty ? 19 : 30))
     #expect(bar.contains(Span("weather", .accentBold(0))))
     #expect(bar.contains(Span("info", .dim)))
-    #expect(text([bar])[0].hasSuffix("⌥⇥"))
+    #expect(text([bar])[0].hasSuffix(Panel.tabHint.isEmpty ? "news" : "⌥⇥"))
     #expect(Panel.width(Panel.tabBar(PaneSection.allCases, active: .info, width: 10)) == 10)
 }
 

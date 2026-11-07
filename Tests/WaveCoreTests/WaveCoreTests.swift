@@ -1,3 +1,6 @@
+#if canImport(Accelerate)
+import Accelerate
+#endif
 import Foundation
 import Testing
 @testable import WaveCore
@@ -312,7 +315,7 @@ private func installedJob(in directory: URL) throws -> [String: Any] {
 }
 
 @Test func shellHookRunsOnlyInInteractiveTerminalApp() {
-    let block = ShellHook.adding(to: "", executable: "/x")
+    let block = ShellHook.adding(to: "", executable: "/x", flavor: .terminalApp)
     for guardText in ["-o interactive", "-t 0", "-t 1", "Apple_Terminal", "-z \"$TMUX\"", "-z \"$SOUNDCREST_NO_PANE\"", "-x '/x'"] {
         #expect(block.contains(guardText))
     }
@@ -391,4 +394,73 @@ private func tmuxWords() -> [String] {
 
 @Test func unnamedProcessStillCountsAsPlaying() {
     #expect(AudioClient.anyPlaying([AudioClient(bundleID: nil, isRunningOutput: true)]))
+}
+
+@Test func fftFindsToneInItsBin() {
+    let bin = 100
+    let samples = (0..<4096).map { sin(2 * Float.pi * Float(bin * $0) / 4096) }
+    let magnitudes = RealFFT(size: 4096).magnitudes(of: samples)
+    #expect(magnitudes.count == 2048)
+    #expect(magnitudes.indices.max { magnitudes[$0] < magnitudes[$1] } == bin)
+}
+
+#if canImport(Accelerate)
+/// The auto-gain floor is an absolute level, so the scale has to match vDSP's.
+@Test func fftMatchesAccelerateScale() {
+    let size = 4096
+    let samples = (0..<size).map { i -> Float in
+        let t = Float(i) / Float(size)
+        return 0.5 * sin(2 * .pi * 37 * t) + 0.25 * cos(2 * .pi * 411 * t) + 0.1 * sin(2 * .pi * 1500.5 * t)
+    }
+
+    var real = [Float](repeating: 0, count: size / 2)
+    var imag = real
+    var expected = real
+    let setup = vDSP_create_fftsetup(12, FFTRadix(kFFTRadix2))!
+    defer { vDSP_destroy_fftsetup(setup) }
+    real.withUnsafeMutableBufferPointer { realPointer in
+        imag.withUnsafeMutableBufferPointer { imagPointer in
+            var split = DSPSplitComplex(realp: realPointer.baseAddress!, imagp: imagPointer.baseAddress!)
+            samples.withUnsafeBytes {
+                vDSP_ctoz($0.bindMemory(to: DSPComplex.self).baseAddress!, 2, &split, 1, vDSP_Length(size / 2))
+            }
+            vDSP_fft_zrip(setup, &split, 1, 12, FFTDirection(kFFTDirection_Forward))
+            split.imagp[0] = 0
+            vDSP_zvabs(&split, 1, &expected, 1, vDSP_Length(size / 2))
+        }
+    }
+
+    let actual = RealFFT(size: size).magnitudes(of: samples)
+    for bin in expected.indices {
+        #expect(abs(actual[bin] - expected[bin]) <= max(expected[bin] * 0.001, 0.01))
+    }
+}
+#endif
+
+private func bytes(_ samples: [Float]) -> Data {
+    samples.withUnsafeBufferPointer { Data(buffer: $0) }
+}
+
+@Test func pcmStreamDecodesFloats() {
+    var stream = PCMStream()
+    #expect(stream.append(bytes([0.5, -0.25])) == [0.5, -0.25])
+}
+
+@Test func pcmStreamKeepsPartialFloatForNextRead() {
+    var stream = PCMStream()
+    let data = bytes([0.5, -0.25])
+    #expect(stream.append(data.prefix(6)) == [0.5])
+    #expect(stream.append(data.dropFirst(6)) == [-0.25])
+}
+
+@Test func pcmStreamHandlesSliceWithOffsetIndices() {
+    var stream = PCMStream()
+    #expect(stream.append(bytes([1, 2, 3]).dropFirst(4)) == [2, 3])
+}
+
+@Test func recorderCapturesTheDefaultMonitorAsStereoFloat() {
+    #expect(LinuxRecorder.arguments == [
+        "--raw", "--device=@DEFAULT_MONITOR@", "--format=float32le",
+        "--rate=48000", "--channels=2", "--latency-msec=20",
+    ])
 }

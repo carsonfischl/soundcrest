@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Carbon
 
@@ -21,3 +22,4 @@ enum HotKey {
         if status != noErr { NSLog("soundcrest: could not register %@ (%d)", title, status) }
     }
 }
+#endif

@@ -147,21 +147,28 @@ final class MusicController {
     private func play(_ track: Track, from playlist: Playlist, on service: MusicService) {
         switch service {
         case .spotify:
-            let script = Process()
-            script.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            script.arguments = ["-e", SpotifyAPI.playScript(track: track, playlist: playlist)]
-            script.standardOutput = FileHandle.nullDevice
-            script.standardError = FileHandle.nullDevice
-            script.terminationHandler = { [weak self] process in
+            let command = Process()
+            #if os(macOS)
+            command.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            command.arguments = ["-e", SpotifyAPI.playScript(track: track, playlist: playlist)]
+            let failure = "Couldn't start Spotify. Is the Spotify app installed, and is your "
+                + "terminal allowed to control it under Privacy & Security > Automation?"
+            #else
+            command.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            command.arguments = ["dbus-send"] + SpotifyAPI.mprisOpenArguments(track: track)
+            let failure = "Couldn't reach the Spotify app. Start Spotify, then pick the song again."
+            #endif
+            command.standardOutput = FileHandle.nullDevice
+            command.standardError = FileHandle.nullDevice
+            command.terminationHandler = { [weak self] process in
                 guard process.terminationStatus != 0 else { return }
-                DispatchQueue.main.async {
+                MainLoop.post {
                     guard let self else { return }
                     self.isOpen = true
-                    self.view.message = "Couldn't start Spotify. Is the Spotify app installed, and is your "
-                        + "terminal allowed to control it under Privacy & Security > Automation?"
+                    self.view.message = failure
                 }
             }
-            try? script.run()
+            try? command.run()
         case .youtube:
             openInBrowser(YouTubeAPI.watchURL(track: track, playlist: playlist))
         }

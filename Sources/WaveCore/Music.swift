@@ -231,6 +231,13 @@ public enum SpotifyAPI {
         return Page(items: tracks, next: response.next)
     }
 
+    /// `dbus-send` arguments asking the Spotify app on Linux to play a track
+    /// through MPRIS. MPRIS has no playlist context, so only the track plays.
+    public static func mprisOpenArguments(track: Track) -> [String] {
+        ["--session", "--type=method_call", "--print-reply", "--dest=org.mpris.MediaPlayer2.spotify",
+         "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.OpenUri", "string:\(track.id)"]
+    }
+
     /// AppleScript for the Spotify desktop app.
     public static func playScript(track: Track, playlist: Playlist) -> String {
         let quoted = { (text: String) in "\"" + text.replacingOccurrences(of: "\"", with: "") + "\"" }

@@ -1,5 +1,10 @@
+#if canImport(CoreLocation)
 import CoreLocation
+#endif
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import WaveCore
 
 /// Results shared by every pane through ~/Library/Caches, so a new window shows
@@ -20,7 +25,7 @@ enum FeedCache {
     }
 }
 
-/// GET requests whose completions arrive on the main queue.
+/// HTTP requests whose completions arrive on the pane's `MainLoop`.
 enum HTTP {
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -37,7 +42,7 @@ enum HTTP {
     static func send(_ request: URLRequest, _ completion: @escaping (_ data: Data?, _ status: Int) -> Void) {
         session.dataTask(with: request) { data, response, _ in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            DispatchQueue.main.async { completion(data, status) }
+            MainLoop.post { completion(data, status) }
         }.resume()
     }
 }
@@ -113,6 +118,9 @@ final class WeatherFeed {
     /// The helper's latest answer, starting it again when the answer is old.
     /// Nil while there is no answer yet.
     private func position() -> Result<Place, Failure>? {
+        #if !os(macOS)
+        return .failure(Failure("Pick a place for the weather: soundcrest --weather-location CITY"))
+        #else
         let outcome = FeedCache.read(LocationHelper.file, as: LocationApp.Outcome.self)
         let age = outcome.map { Date().timeIntervalSince($0.finished) } ?? .infinity
         let trustedFor = outcome?.place == nil ? Self.failureFreshFor : Self.positionFreshFor
@@ -123,6 +131,7 @@ final class WeatherFeed {
         if let place = outcome?.place { return .success(place) }
         if let failure = outcome?.failure { return .failure(Failure(failure)) }
         return nil
+        #endif
     }
 
     private func fetch(_ place: Place, query: String?, imperial: Bool, cached: Cached?) {
@@ -148,6 +157,7 @@ struct Failure: Error {
     init(_ message: String) { self.message = message }
 }
 
+#if os(macOS)
 /// One-shot Core Location lookups. Main thread only.
 final class Locator: NSObject, CLLocationManagerDelegate {
     private static let denied = Failure(
@@ -219,6 +229,7 @@ final class Locator: NSObject, CLLocationManagerDelegate {
         }
     }
 }
+#endif
 
 /// Headlines for the pane. Main thread only.
 final class NewsFeed {

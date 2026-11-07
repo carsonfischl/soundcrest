@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreAudio
 import Foundation
 import WaveCore
@@ -198,3 +199,4 @@ final class GatedTap {
 
     func stop() { tap.stop() }
 }
+#endif

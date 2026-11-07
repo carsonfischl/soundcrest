@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import WaveCore
 
@@ -29,20 +33,21 @@ enum Pane {
 
     private static func columns() -> Int? {
         var size = winsize()
-        guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0 else { return nil }
+        guard ioctl(STDOUT_FILENO, windowSizeRequest, &size) == 0 else { return nil }
         return PaneSize.stored(in: .standard).columns(inWindow: Int(size.ws_col))
     }
 
     private static func findTmux() -> String? {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
-        return (["/opt/homebrew/bin", "/usr/local/bin"] + path.split(separator: ":").map(String.init))
+        return (["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin", "/usr/bin"]
+                + path.split(separator: ":").map(String.init))
             .map { $0 + "/tmux" }
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     static func run(_ look: Look) -> Never {
         let ring = SampleRing(capacity: 1 << 16)
-        let tap = GatedTap(ring: ring)
+        let tap = PaneAudio(ring: ring)
         let terminal = Terminal()
         let rows = PaneSize.stored(in: .standard).rows
         let analyzer = Analyzer()
@@ -57,10 +62,11 @@ enum Pane {
         var lastSize = terminal.size()
         var lastPanel: [UInt8] = []
         var lastBrowser: [UInt8] = []
+        var pendingKeys: [UInt8] = []
+        var keyboard: Int32? = STDIN_FILENO
 
         // tmux closes the pane with SIGHUP when the window goes.
         for number in [SIGINT, SIGTERM, SIGHUP] { signal(number) { _ in stopping = true } }
-        watchKeys()
 
         while !stopping {
             tick += 1
@@ -129,29 +135,27 @@ enum Pane {
                 }
             }
             settled = quiet
-            // Sleeps on the main run loop so Core Location and network replies
-            // arrive, and wakes early for a key press.
+            // Sleeps until the next frame, waking early for a click or key and
+            // running network replies that arrived meanwhile.
             let interval = tap.isRunning || !settled ? 1 / Double(framesPerSecond) : idleSeconds
-            CFRunLoopRunInMode(.defaultMode, interval, true)
+            switch MainLoop.wait(seconds: interval, input: keyboard) {
+            case .bytes(let bytes)?: pendingKeys += bytes
+            case .closed?: keyboard = nil
+            case nil: break
+            }
         }
         tap.stop()
         terminal.write(PaneInput.disableMouse)
         terminal.restore()
         exit(0)
     }
-
-    /// Collects key presses on the main queue, waking the run loop.
-    private static func watchKeys() {
-        FileHandle.standardInput.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-                return
-            }
-            DispatchQueue.main.async { pendingKeys += data }
-        }
-    }
 }
 
+#if os(macOS)
+/// Core Audio tap, open only while something plays.
+typealias PaneAudio = GatedTap
+#else
+typealias PaneAudio = LinuxCapture
+#endif
+
 private nonisolated(unsafe) var stopping = false
-private nonisolated(unsafe) var pendingKeys: [UInt8] = []

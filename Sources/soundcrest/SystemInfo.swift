@@ -1,3 +1,4 @@
+#if os(macOS)
 import Darwin
 import Foundation
 import IOKit
@@ -138,3 +139,4 @@ struct SystemInfo {
         return nil
     }
 }
+#endif
