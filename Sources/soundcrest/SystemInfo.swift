@@ -9,7 +9,7 @@ import WaveCore
 /// `fields()` re-reads the ones that change.
 struct SystemInfo {
     let header: String
-    let logo = SystemLogo.macOS
+    let logo = SystemLogo.apple
     private let os: String
     private let host: String
     private let kernel: String

@@ -387,34 +387,50 @@ private let rss = """
 
 // MARK: Logos
 
-@Test func logosAreRectangularAndPickedFromOSRelease() {
-    let all = [SystemLogo.macOS] + ["ubuntu", "debian", "fedora", "arch", "gentoo"].map {
-        SystemLogo.linux(osRelease: "ID=\($0)\n")
+@Test func logosRenderAtAnySizeAsSquareBrailleBlocks() {
+    for logo in SystemLogo.allCases {
+        for rows in [SystemLogo.minimumRows, 9, 16] {
+            let art = logo.render(rows: rows)
+            #expect(art.count == rows)
+            #expect(art.allSatisfy { $0.count == rows * 2 })
+            let inked = art.joined().filter { $0 != " " }.count
+            #expect(inked > rows * rows / 4, "\(logo) at \(rows) rows is nearly empty")
+            #expect(art.joined().allSatisfy { $0 == " " || (0x2800...0x28FF).contains($0.unicodeScalars.first!.value) })
+        }
     }
-    for logo in all {
-        #expect(Set(logo.map(\.count)).count == 1)
-        #expect(logo.count >= 5 && logo[0].count <= 15)
-    }
-    #expect(SystemLogo.linux(osRelease: "ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n")
-        == SystemLogo.linux(osRelease: "ID=ubuntu\n"))
-    #expect(SystemLogo.linux(osRelease: "ID=manjaro\nID_LIKE=arch\n") == SystemLogo.linux(osRelease: "ID=arch\n"))
-    #expect(SystemLogo.linux(osRelease: "ID=gentoo\n") == SystemLogo.linux(osRelease: ""))  // Tux
-    #expect(SystemLogo.linux(osRelease: "ID=ubuntu") != SystemLogo.linux(osRelease: ""))
+    #expect(SystemLogo.apple.render(rows: 0).isEmpty)
 }
 
-@Test func infoPutsLogoBesideDetailsWhenItFits() {
-    let logo = ["/\\", "\\/", "##"]
-    let lines = InfoPanel.layout(header: "me@mac", fields: fields, width: 40, rows: 10, logo: logo)
-    #expect(text(lines).prefix(4) == ["/\\  me@mac", "\\/  ──────", "##  OS: macOS Tahoe 26.1", "    Host: MacBook Pro"])
-    #expect(lines[0][0].style == .accent(0))
-    #expect(lines[2][0].style == .accent(1))
-    #expect(lines.count == 6)
+@Test func linuxLogoComesFromOSRelease() {
+    #expect(SystemLogo.linux(osRelease: "ID=ubuntu\n") == .ubuntu)
+    #expect(SystemLogo.linux(osRelease: "ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n") == .ubuntu)
+    #expect(SystemLogo.linux(osRelease: "ID=manjaro\nID_LIKE=arch\n") == .arch)
+    #expect(SystemLogo.linux(osRelease: "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n") == .fedora)
+    #expect(SystemLogo.linux(osRelease: "ID=raspbian\nID_LIKE=debian\n") == .debian)
+    #expect(SystemLogo.linux(osRelease: "ID=gentoo\n") == .tux)
+    #expect(SystemLogo.linux(osRelease: "") == .tux)
 }
 
-@Test func infoDropsLogoWhenNarrowOrShort() {
-    let logo = [String](repeating: "############", count: 4)
-    let narrow = InfoPanel.layout(header: "me@mac", fields: fields, width: 30, rows: 10, logo: logo)
-    #expect(narrow == InfoPanel.layout(header: "me@mac", fields: fields, width: 30, rows: 10))
-    let short = InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 3, logo: logo)
-    #expect(short == InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 3))
+@Test func infoPutsTheLargestFittingLogoAboveFullDetails() {
+    // Full details are 6 lines; 16 rows leave 9 for the logo and a gap.
+    let lines = InfoPanel.layout(header: "carson@mac", fields: fields, width: 47, rows: 16, logo: .apple)
+    #expect(lines.count == 16)
+    #expect(text(Array(lines.suffix(7))) == ["", "carson@mac", "──────────", "OS: macOS Tahoe 26.1",
+                                            "Host: MacBook Pro", "Shell: zsh", String(repeating: "█", count: 24)])
+    let art = SystemLogo.apple.render(rows: 9)
+    #expect(text(Array(lines.prefix(9))) == art.map { String(repeating: " ", count: (47 - 18) / 2) + $0 })
+    #expect(lines[0][0].style == .accent(0) && lines[8][0].style == .accent(1))
+}
+
+@Test func infoLogoStopsGrowingAndShrinksBeforeFieldsGo() {
+    let roomy = InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 60, logo: .tux)
+    #expect(roomy.count == InfoPanel.maximumLogoRows + 1 + 6)
+    let narrow = InfoPanel.layout(header: "me@mac", fields: fields, width: 14, rows: 60, logo: .tux)
+    #expect(narrow.count == 7 + 1 + 6)  // 14 columns hold a 7-row logo
+    // Without the swatch there is just room for the smallest logo.
+    let tight = InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 11, logo: .tux)
+    #expect(tight.count == 11 && text(tight).last == "Shell: zsh")
+    // Too short for any logo: same as having none.
+    #expect(InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 8, logo: .tux)
+        == InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 8))
 }

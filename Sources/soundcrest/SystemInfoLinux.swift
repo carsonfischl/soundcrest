@@ -7,7 +7,7 @@ import WaveCore
 /// /etc/os-release. Fixed facts are read once; `fields()` re-reads the rest.
 struct SystemInfo {
     let header: String
-    let logo: [String]
+    let logo: SystemLogo
     private let os: String
     private let host: String?
     private let kernel: String

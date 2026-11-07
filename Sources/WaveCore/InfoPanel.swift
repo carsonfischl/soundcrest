@@ -10,29 +10,31 @@ public enum InfoPanel {
         }
     }
 
-    /// Columns between the logo and the details.
-    static let logoGap = 2
-    /// Narrowest the details may get before the logo is left out.
-    static let minimumTextWidth = 26
+    /// Tallest the logo grows, in rows.
+    static let maximumLogoRows = 16
 
-    /// Fits the summary into `rows` × `width`, with `logo` to its left when
-    /// there is room. Drops the logo first, then decoration, then later fields.
+    /// Fits the summary into `rows` × `width`, with `logo` centred above it,
+    /// as large as the room allows. The details always come first: the logo
+    /// appears only beside a full set of fields, and is left out when even
+    /// the smallest one won't fit. After that, decoration goes before fields.
     public static func layout(header: String, fields: [Field], width: Int, rows: Int,
-                              logo: [String] = []) -> [PanelLine] {
+                              logo: SystemLogo? = nil) -> [PanelLine] {
         guard rows > 0, width >= 8 else { return [] }
-        let logoWidth = logo.map(\.count).max() ?? 0
-        let textWidth = width - logoWidth - logoGap
-        guard !logo.isEmpty, textWidth >= minimumTextWidth, rows >= logo.count else {
-            return Panel.firstFitting(candidates(header: header, fields: fields, width: width), rows: rows)
+        let details = candidates(header: header, fields: fields, width: width)
+        if let logo {
+            // Full details with or without the swatch, then title and fields.
+            for text in details.prefix(3) {
+                let logoRows = min(maximumLogoRows, rows - text.count - 1, width / 2)
+                guard logoRows >= SystemLogo.minimumRows else { continue }
+                let art = logo.render(rows: logoRows)
+                let indent = String(repeating: " ", count: (width - logoRows * 2) / 2)
+                let shaded = art.enumerated().map { row, line -> PanelLine in
+                    [Span(indent + line, .accent(Float(row) / Float(max(art.count - 1, 1))))]
+                }
+                return shaded + [[]] + text
+            }
         }
-        let text = Panel.firstFitting(candidates(header: header, fields: fields, width: textWidth), rows: rows)
-        let gap = Span(String(repeating: " ", count: logoGap))
-        return (0..<max(text.count, logo.count)).map { row in
-            let art = row < logo.count
-                ? Span(logo[row], .accent(Float(row) / Float(max(logo.count - 1, 1))))
-                : Span(String(repeating: " ", count: logoWidth))
-            return row < text.count ? [art, gap] + text[row] : [art]
-        }
+        return Panel.firstFitting(details, rows: rows)
     }
 
     private static func candidates(header: String, fields: [Field], width: Int) -> [[PanelLine]] {
