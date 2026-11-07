@@ -384,3 +384,37 @@ private let rss = """
     #expect(decoded == outcome)
     #expect(Options.parse([LocationApp.runFlag])?.mode == .locate)
 }
+
+// MARK: Logos
+
+@Test func logosAreRectangularAndPickedFromOSRelease() {
+    let all = [SystemLogo.macOS] + ["ubuntu", "debian", "fedora", "arch", "gentoo"].map {
+        SystemLogo.linux(osRelease: "ID=\($0)\n")
+    }
+    for logo in all {
+        #expect(Set(logo.map(\.count)).count == 1)
+        #expect(logo.count >= 5 && logo[0].count <= 15)
+    }
+    #expect(SystemLogo.linux(osRelease: "ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n")
+        == SystemLogo.linux(osRelease: "ID=ubuntu\n"))
+    #expect(SystemLogo.linux(osRelease: "ID=manjaro\nID_LIKE=arch\n") == SystemLogo.linux(osRelease: "ID=arch\n"))
+    #expect(SystemLogo.linux(osRelease: "ID=gentoo\n") == SystemLogo.linux(osRelease: ""))  // Tux
+    #expect(SystemLogo.linux(osRelease: "ID=ubuntu") != SystemLogo.linux(osRelease: ""))
+}
+
+@Test func infoPutsLogoBesideDetailsWhenItFits() {
+    let logo = ["/\\", "\\/", "##"]
+    let lines = InfoPanel.layout(header: "me@mac", fields: fields, width: 40, rows: 10, logo: logo)
+    #expect(text(lines).prefix(4) == ["/\\  me@mac", "\\/  ──────", "##  OS: macOS Tahoe 26.1", "    Host: MacBook Pro"])
+    #expect(lines[0][0].style == .accent(0))
+    #expect(lines[2][0].style == .accent(1))
+    #expect(lines.count == 6)
+}
+
+@Test func infoDropsLogoWhenNarrowOrShort() {
+    let logo = [String](repeating: "############", count: 4)
+    let narrow = InfoPanel.layout(header: "me@mac", fields: fields, width: 30, rows: 10, logo: logo)
+    #expect(narrow == InfoPanel.layout(header: "me@mac", fields: fields, width: 30, rows: 10))
+    let short = InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 3, logo: logo)
+    #expect(short == InfoPanel.layout(header: "me@mac", fields: fields, width: 47, rows: 3))
+}

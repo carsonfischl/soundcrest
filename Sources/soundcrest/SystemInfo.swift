@@ -9,6 +9,7 @@ import WaveCore
 /// `fields()` re-reads the ones that change.
 struct SystemInfo {
     let header: String
+    let logo = SystemLogo.macOS
     private let os: String
     private let host: String
     private let kernel: String
@@ -49,7 +50,7 @@ struct SystemInfo {
         fields.append(.init("Shell", shell))
         fields.append(.init("CPU", cpu))
         if let memory = Self.memory() { fields.append(.init("Memory", InfoPanel.usage(used: memory.used, total: memory.total))) }
-        if let disk = Self.disk() { fields.append(.init("Disk (/)", InfoPanel.usage(used: disk.used, total: disk.total))) }
+        if let disk = Self.disk() { fields.append(.init("Disk", InfoPanel.usage(used: disk.used, total: disk.total))) }
         if let battery = Self.battery() { fields.append(.init("Battery", battery)) }
         return fields
     }

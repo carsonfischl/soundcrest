@@ -10,10 +10,32 @@ public enum InfoPanel {
         }
     }
 
-    /// Fits the summary into `rows` × `width`, dropping decoration before data
-    /// and later fields before earlier ones.
-    public static func layout(header: String, fields: [Field], width: Int, rows: Int) -> [PanelLine] {
+    /// Columns between the logo and the details.
+    static let logoGap = 2
+    /// Narrowest the details may get before the logo is left out.
+    static let minimumTextWidth = 26
+
+    /// Fits the summary into `rows` × `width`, with `logo` to its left when
+    /// there is room. Drops the logo first, then decoration, then later fields.
+    public static func layout(header: String, fields: [Field], width: Int, rows: Int,
+                              logo: [String] = []) -> [PanelLine] {
         guard rows > 0, width >= 8 else { return [] }
+        let logoWidth = logo.map(\.count).max() ?? 0
+        let textWidth = width - logoWidth - logoGap
+        guard !logo.isEmpty, textWidth >= minimumTextWidth, rows >= logo.count else {
+            return Panel.firstFitting(candidates(header: header, fields: fields, width: width), rows: rows)
+        }
+        let text = Panel.firstFitting(candidates(header: header, fields: fields, width: textWidth), rows: rows)
+        let gap = Span(String(repeating: " ", count: logoGap))
+        return (0..<max(text.count, logo.count)).map { row in
+            let art = row < logo.count
+                ? Span(logo[row], .accent(Float(row) / Float(max(logo.count - 1, 1))))
+                : Span(String(repeating: " ", count: logoWidth))
+            return row < text.count ? [art, gap] + text[row] : [art]
+        }
+    }
+
+    private static func candidates(header: String, fields: [Field], width: Int) -> [[PanelLine]] {
         let shown = fields.map { field in
             Panel.clipped([Span(field.label + ": ", .accentBold(0)), Span(field.value)], to: width)
         }
@@ -23,12 +45,12 @@ public enum InfoPanel {
         let swatch: PanelLine = (0..<swatchWidth).map {
             Span("█", .accent(Float($0) / Float(max(swatchWidth - 1, 1))))
         }
-        return Panel.firstFitting([
+        return [
             [title, rule] + shown + [swatch],
             [title, rule] + shown,
             [title] + shown,
             shown,
-        ], rows: rows)
+        ]
     }
 
     /// `3d 4h 12m`, dropping leading zero units.

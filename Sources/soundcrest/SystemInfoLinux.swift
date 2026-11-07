@@ -7,6 +7,7 @@ import WaveCore
 /// /etc/os-release. Fixed facts are read once; `fields()` re-reads the rest.
 struct SystemInfo {
     let header: String
+    let logo: [String]
     private let os: String
     private let host: String?
     private let kernel: String
@@ -20,7 +21,9 @@ struct SystemInfo {
         let hostName = gethostname(&name, name.count) == 0 ? String(cString: name) : "linux"
         header = "\(user)@\(hostName.split(separator: ".").first.map(String.init) ?? hostName)"
 
-        os = Self.text("/etc/os-release").flatMap { LinuxSystem.osName(osRelease: $0) } ?? "Linux"
+        let osRelease = Self.text("/etc/os-release") ?? ""
+        os = LinuxSystem.osName(osRelease: osRelease) ?? "Linux"
+        logo = SystemLogo.linux(osRelease: osRelease)
         host = Self.model()
         var system = utsname()
         uname(&system)
@@ -45,7 +48,7 @@ struct SystemInfo {
         if let memory = Self.text("/proc/meminfo").flatMap({ LinuxSystem.memory(meminfo: $0) }) {
             fields.append(.init("Memory", InfoPanel.usage(used: memory.used, total: memory.total)))
         }
-        if let disk = Self.disk() { fields.append(.init("Disk (/)", InfoPanel.usage(used: disk.used, total: disk.total))) }
+        if let disk = Self.disk() { fields.append(.init("Disk", InfoPanel.usage(used: disk.used, total: disk.total))) }
         if let battery = Self.battery() { fields.append(.init("Battery", battery)) }
         return fields
     }
