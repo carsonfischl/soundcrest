@@ -94,7 +94,7 @@ final class Sections {
         var links: [URL?] = []
         switch selected {
         case .info?:
-            lines = InfoPanel.layout(header: info.header, fields: fields, width: columns, rows: rows, logo: info.logo)
+            lines = InfoPanel.layout(header: info.header, fields: fields, width: columns, rows: rows)
         case .weather?:
             lines = WeatherPanel.layout(weather.state, width: columns, rows: rows)
         case .news?:

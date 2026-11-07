@@ -10,58 +10,11 @@ public enum InfoPanel {
         }
     }
 
-    /// Tallest the logo grows, in rows.
-    static let maximumLogoRows = 16
-
-    /// Fits the summary into `rows` × `width`, with `logo` centred above it,
-    /// as large as the room allows. The details always come first: the logo
-    /// appears only beside a full set of fields, and is left out when even
-    /// the smallest one won't fit. After that, decoration goes before fields.
-    public static func layout(header: String, fields: [Field], width: Int, rows: Int,
-                              logo: SystemLogo? = nil) -> [PanelLine] {
+    /// Fits the summary into `rows` × `width`, dropping decoration before data
+    /// and later fields before earlier ones.
+    public static func layout(header: String, fields: [Field], width: Int, rows: Int) -> [PanelLine] {
         guard rows > 0, width >= 8 else { return [] }
-        let details = candidates(header: header, fields: fields, width: width)
-        if let logo {
-            // Full details with or without the swatch, then title and fields.
-            for text in details.prefix(3) {
-                let logoRows = min(maximumLogoRows, rows - text.count - 1, width / 2)
-                guard logoRows >= SystemLogo.minimumRows else { continue }
-                let indent = Span(String(repeating: " ", count: (width - logoRows * 2) / 2))
-                let art = logo.quadrants(rows: logoRows).enumerated().map { row, cells in
-                    [indent] + logoSpans(cells, shade: Float(row) / Float(max(logoRows - 1, 1)))
-                }
-                return art + [[]] + text
-            }
-        }
-        return Panel.firstFitting(details, rows: rows)
-    }
-
-    /// Turns a row of quadrant masks into spans. Whole cells are filled with
-    /// background colour and cells missing one quarter are drawn in reverse,
-    /// so most of the logo covers the full cell, including the gap some
-    /// terminals leave between rows of block glyphs. Other edges are glyphs.
-    static func logoSpans(_ cells: [Int], shade: Float) -> PanelLine {
-        var spans: PanelLine = []
-        for mask in cells {
-            let span: Span
-            switch mask {
-            case 15: span = Span(" ", .fill(shade))
-            case 7, 11, 13, 14: span = Span(String(SystemLogo.quadrantGlyphs[15 - mask]), .cutout(shade))
-            default: span = Span(String(SystemLogo.quadrantGlyphs[mask]), .accent(shade))
-            }
-            if let last = spans.last, last.style == span.style {
-                spans[spans.count - 1] = Span(last.text + span.text, span.style)
-            } else {
-                spans.append(span)
-            }
-        }
-        // Trailing blanks would only pad the line.
-        if let last = spans.last, last.style == .accent(shade) {
-            let trimmed = String(last.text.reversed().drop { $0 == " " }.reversed())
-            spans.removeLast()
-            if !trimmed.isEmpty { spans.append(Span(trimmed, last.style)) }
-        }
-        return spans
+        return Panel.firstFitting(candidates(header: header, fields: fields, width: width), rows: rows)
     }
 
     private static func candidates(header: String, fields: [Field], width: Int) -> [[PanelLine]] {

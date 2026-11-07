@@ -5,12 +5,6 @@ public struct Span: Equatable, Sendable {
         case plain, bold, dim
         case accent(Float)
         case accentBold(Float)
-        /// Background in the accent colour, for solid blocks without the gap
-        /// some terminals leave between rows of block glyphs.
-        case fill(Float)
-        /// Reverse video in the accent colour: the background is the accent and
-        /// the glyph is drawn in the terminal's own background colour.
-        case cutout(Float)
     }
 
     public let text: String
@@ -53,10 +47,6 @@ public enum Panel {
         case .dim: return "\u{1B}[2m"
         case .accent(let t): return foreground(palette.mix(t))
         case .accentBold(let t): return "\u{1B}[1m" + foreground(palette.mix(t))
-        case .cutout(let t): return "\u{1B}[7m" + foreground(palette.mix(t))
-        case .fill(let t):
-            let color = palette.mix(t)
-            return "\u{1B}[48;2;\(Int(color.r));\(Int(color.g));\(Int(color.b))m"
         }
     }
 

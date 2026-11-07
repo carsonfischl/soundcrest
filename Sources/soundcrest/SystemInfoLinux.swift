@@ -7,7 +7,6 @@ import WaveCore
 /// /etc/os-release. Fixed facts are read once; `fields()` re-reads the rest.
 struct SystemInfo {
     let header: String
-    let logo: SystemLogo
     private let os: String
     private let host: String?
     private let kernel: String
@@ -23,7 +22,6 @@ struct SystemInfo {
 
         let osRelease = Self.text("/etc/os-release") ?? ""
         os = LinuxSystem.osName(osRelease: osRelease) ?? "Linux"
-        logo = SystemLogo.linux(osRelease: osRelease)
         host = Self.model()
         var system = utsname()
         uname(&system)
