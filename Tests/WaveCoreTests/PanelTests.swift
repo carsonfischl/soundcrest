@@ -387,18 +387,33 @@ private let rss = """
 
 // MARK: Logos
 
-@Test func logosRenderAtAnySizeAsSquareBrailleBlocks() {
+@Test func logosRenderAtAnySizeAsQuadrantBlocks() {
     for logo in SystemLogo.allCases {
         for rows in [SystemLogo.minimumRows, 9, 16] {
-            let art = logo.render(rows: rows)
-            #expect(art.count == rows)
-            #expect(art.allSatisfy { $0.count == rows * 2 })
-            let inked = art.joined().filter { $0 != " " }.count
+            let cells = logo.quadrants(rows: rows)
+            #expect(cells.count == rows)
+            #expect(cells.allSatisfy { $0.count == rows * 2 && $0.allSatisfy { (0...15).contains($0) } })
+            let inked = cells.joined().filter { $0 != 0 }.count
             #expect(inked > rows * rows / 4, "\(logo) at \(rows) rows is nearly empty")
-            #expect(art.joined().allSatisfy { $0 == " " || (0x2800...0x28FF).contains($0.unicodeScalars.first!.value) })
+            #expect(logo.render(rows: rows) == cells.map { String($0.map { SystemLogo.quadrantGlyphs[$0] }) })
         }
     }
     #expect(SystemLogo.apple.render(rows: 0).isEmpty)
+}
+
+@Test func logoSpansFillSolidCellsAndCutOutNearlySolidOnes() {
+    // full, missing top-left, half, empty, empty
+    let spans = InfoPanel.logoSpans([15, 15, 14, 3, 0, 0], shade: 0.5)
+    #expect(spans == [Span("  ", .fill(0.5)), Span("▘", .cutout(0.5)), Span("▀", .accent(0.5))])
+    #expect(InfoPanel.logoSpans([0, 0], shade: 0).isEmpty)
+}
+
+@Test func fillAndCutoutStylesRenderAsBackgroundAndReverse() {
+    let palette = Palette(centre: RGB(r: 10, g: 20, b: 30), edge: RGB(r: 10, g: 20, b: 30))
+    let out = String(decoding: Panel.render([[Span(" ", .fill(0)), Span("▘", .cutout(0))]], firstRow: 1, lastRow: 1,
+                                            palette: palette), as: UTF8.self)
+    #expect(out.contains("\u{1B}[48;2;10;20;30m \u{1B}[0m"))
+    #expect(out.contains("\u{1B}[7m\u{1B}[38;2;10;20;30m▘\u{1B}[0m"))
 }
 
 @Test func linuxLogoComesFromOSRelease() {
@@ -417,9 +432,11 @@ private let rss = """
     #expect(lines.count == 16)
     #expect(text(Array(lines.suffix(7))) == ["", "carson@mac", "──────────", "OS: macOS Tahoe 26.1",
                                             "Host: MacBook Pro", "Shell: zsh", String(repeating: "█", count: 24)])
-    let art = SystemLogo.apple.render(rows: 9)
-    #expect(text(Array(lines.prefix(9))) == art.map { String(repeating: " ", count: (47 - 18) / 2) + $0 })
-    #expect(lines[0][0].style == .accent(0) && lines[8][0].style == .accent(1))
+    let cells = SystemLogo.apple.quadrants(rows: 9)
+    let indent = String(repeating: " ", count: (47 - 18) / 2)
+    #expect(Array(lines.prefix(9)) == cells.enumerated().map { row, line in
+        [Span(indent)] + InfoPanel.logoSpans(line, shade: Float(row) / 8)
+    })
 }
 
 @Test func infoLogoStopsGrowingAndShrinksBeforeFieldsGo() {

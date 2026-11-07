@@ -1,9 +1,10 @@
 import Foundation
 
-/// The operating system's logo for the info view, drawn from simple shapes in
-/// braille dots so it stays smooth at any size. Each terminal cell holds 2×4
-/// dots, and cells are about twice as tall as wide, so a logo `rows` tall is
-/// `2 × rows` columns wide and comes out roughly square.
+/// The operating system's logo for the info view, drawn from simple shapes so
+/// one drawing works at any size. It is rendered in quadrant blocks (2×2 per
+/// cell): braille dots looked grainy, and block glyphs alone leave a gap
+/// between rows in Terminal, so the info view fills whole cells with
+/// background colour and uses glyphs only along the edges.
 public enum SystemLogo: String, CaseIterable, Sendable {
     case apple, tux, ubuntu, debian, fedora, arch
 
@@ -24,33 +25,40 @@ public enum SystemLogo: String, CaseIterable, Sendable {
         return ids.lazy.compactMap { logos[$0] }.first ?? .tux
     }
 
-    /// `rows` lines of `2 × rows` columns. Empty cells are spaces.
-    public func render(rows: Int) -> [String] {
+    /// Which quarters of each cell are inked: `rows` lines of `2 × rows`
+    /// cells, each 0…15 with top-left 1, top-right 2, bottom-left 4 and
+    /// bottom-right 8. Cells are twice as tall as wide, so the logo is square.
+    public func quadrants(rows: Int) -> [[Int]] {
         guard rows > 0 else { return [] }
         let cols = rows * 2
-        let width = Double(cols * 2), height = Double(rows * 4)
+        let width = Double(cols * 2), height = Double(rows * 2)
         return (0..<rows).map { row in
-            String((0..<cols).map { col -> Character in
-                var dots: UInt32 = 0
-                for dx in 0..<2 {
-                    for dy in 0..<4 {
-                        let x = (Double(col * 2 + dx) + 0.5) / width
-                        let y = (Double(row * 4 + dy) + 0.5) / height
-                        if contains(x: x, y: y) { dots |= Self.bits[dx][dy] }
-                    }
+            (0..<cols).map { col in
+                var mask = 0
+                for (bit, (dx, dy)) in [(0, 0), (1, 0), (0, 1), (1, 1)].enumerated() {
+                    let x = (Double(col * 2 + dx) + 0.5) / width
+                    let y = (Double(row * 2 + dy) + 0.5) / height
+                    if contains(x: x, y: y) { mask |= 1 << bit }
                 }
-                return dots == 0 ? " " : Character(Unicode.Scalar(0x2800 + dots)!)
-            })
+                return mask
+            }
         }
     }
 
-    /// Three dots evenly around the ring, starting at 2 o'clock.
-    private static let ubuntuDots: [(x: Double, y: Double)] = (0..<3).map { index in
-        let angle = Double(index) * 2 * Double.pi / 3 - Double.pi / 6
-        return (x: 0.5 + 0.40 * cos(angle), y: 0.5 + 0.40 * sin(angle))
+    /// The logo as quadrant-block text, `rows` lines of `2 × rows` columns.
+    public func render(rows: Int) -> [String] {
+        quadrants(rows: rows).map { String($0.map { Self.quadrantGlyphs[$0] }) }
     }
 
-    private static let bits: [[UInt32]] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]]
+    /// Indexed by the quadrant mask from `quadrants(rows:)`.
+    public static let quadrantGlyphs: [Character] = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛",
+                                                      "▗", "▚", "▐", "▜", "▄", "▙", "▟", "█"]
+
+    /// Three dots evenly around the ring: right, lower left and upper left.
+    private static let ubuntuDots: [(x: Double, y: Double)] = (0..<3).map { index in
+        let angle = Double(index) * 2 * Double.pi / 3
+        return (x: 0.5 + 0.38 * cos(angle), y: 0.5 + 0.38 * sin(angle))
+    }
 
     /// Whether the point (0…1 across, 0…1 down) is inked.
     func contains(x: Double, y: Double) -> Bool {
@@ -63,16 +71,23 @@ public enum SystemLogo: String, CaseIterable, Sendable {
             let leaf = rotatedEllipse(x, y, 0.60, 0.11, 0.14, 0.055, angle: -0.75)
             return (body && !carved) || leaf
         case .tux:
-            let silhouette = circle(x, y, 0.50, 0.24, 0.21) || ellipse(x, y, 0.50, 0.62, 0.34, 0.35)
-            let belly = ellipse(x, y, 0.50, 0.68, 0.19, 0.24)
-            let eyes = circle(x, y, 0.42, 0.20, 0.05) || circle(x, y, 0.58, 0.20, 0.05)
-            let feet = ellipse(x, y, 0.32, 0.96, 0.17, 0.05) || ellipse(x, y, 0.68, 0.96, 0.17, 0.05)
-            return (silhouette && !belly && !eyes) || feet
+            let head = ellipse(x, y, 0.50, 0.24, 0.20, 0.20)
+            let body = ellipse(x, y, 0.50, 0.60, 0.31, 0.37)
+            let flippers = rotatedEllipse(x, y, 0.21, 0.62, 0.07, 0.22, angle: 0.25)
+                || rotatedEllipse(x, y, 0.79, 0.62, 0.07, 0.22, angle: -0.25)
+            let belly = ellipse(x, y, 0.50, 0.66, 0.20, 0.27)
+            let face = ellipse(x, y, 0.50, 0.27, 0.13, 0.11)
+            let pupils = circle(x, y, 0.45, 0.24, 0.035) || circle(x, y, 0.55, 0.24, 0.035)
+            let beak = ellipse(x, y, 0.50, 0.335, 0.08, 0.035)
+            let feet = ellipse(x, y, 0.35, 0.965, 0.15, 0.035) || ellipse(x, y, 0.65, 0.965, 0.15, 0.035)
+            let dark = (head || body || flippers) && !belly && !face
+            return dark || pupils || beak || feet
         case .ubuntu:
-            let nearest = Self.ubuntuDots.map { distance(x, y, $0.x, $0.y) }.min() ?? 1
+            // A ring broken where each of three dots sits just outside it.
             let d = distance(x, y, 0.5, 0.5)
-            let ring = d > 0.25 && d < 0.35 && nearest >= 0.17
-            return ring || nearest < 0.10
+            let nearest = Self.ubuntuDots.map { distance(x, y, $0.x, $0.y) }.min() ?? 1
+            let ring = d > 0.24 && d < 0.33 && nearest >= 0.16
+            return ring || nearest < 0.085
         case .debian:
             // An Archimedean spiral that thickens as it opens out.
             let dx = x - 0.47, dy = y - 0.55
@@ -87,14 +102,16 @@ public enum SystemLogo: String, CaseIterable, Sendable {
             }
             return false
         case .fedora:
+            // A speech bubble with an "f" cut out, hooked right at the top and
+            // left at the bottom.
             let bubble = circle(x, y, 0.5, 0.5, 0.47) || (x > 0.03 && x < 0.5 && y > 0.5 && y < 0.97)
-            let stem = x > 0.45 && x < 0.58 && y > 0.30 && y < 0.78
-            let hook = y < 0.33 && x > 0.45 && {
-                let d = distance(x, y, 0.65, 0.33)
-                return d > 0.07 && d < 0.20
-            }()
-            let bar = x > 0.32 && x < 0.72 && y > 0.47 && y < 0.57
-            return bubble && !(stem || hook || bar)
+            let stem = x > 0.44 && x < 0.56 && y > 0.33 && y < 0.67
+            let top = distance(x, y, 0.645, 0.34)
+            let topHook = y <= 0.34 && top > 0.085 && top < 0.205
+            let bottom = distance(x, y, 0.355, 0.66)
+            let bottomHook = y >= 0.66 && bottom > 0.085 && bottom < 0.205
+            let bar = x > 0.30 && x < 0.70 && y > 0.45 && y < 0.55
+            return bubble && !(stem || topHook || bottomHook || bar)
         case .arch:
             let triangle = y > 0.02 && abs(x - 0.5) < 0.48 * y
             let arch = ellipse(x, y, 0.5, 1.02, 0.18, 0.40)
